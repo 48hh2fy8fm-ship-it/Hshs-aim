@@ -1,0 +1,83 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Unzip Project File
+        run: |
+          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Unzipping $ZIP_FILE..."
+            unzip -o "$ZIP_FILE"
+          fi
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build App
+        run: |
+          PROJ_PATH=$(find . -name "*.xcodeproj" -print -quit)
+
+          if [ -z "$PROJ_PATH" ]; then
+            echo "Error: No Xcode project found."
+            exit 1
+          fi
+
+          SCHEME_NAME=$(xcodebuild -list -project "$PROJ_PATH" \
+            | sed -n '/Schemes:/,/^$/p' \
+            | tail -n +2 \
+            | head -n 1 \
+            | xargs)
+
+          if [ -z "$SCHEME_NAME" ]; then
+            echo "Error: No scheme found."
+            exit 1
+          fi
+
+          echo "Found Project: $PROJ_PATH"
+          echo "Found Scheme: $SCHEME_NAME"
+
+          xcodebuild build \
+            -project "$PROJ_PATH" \
+            -scheme "$SCHEME_NAME" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            ALWAYS_SEARCH_USER_PATHS=NO
+
+      - name: Package to IPA
+        run: |
+          mkdir -p Payload
+
+          APP_PATH=$(find . \
+            -name "*.app" \
+            -path "*/Build/Products/Release-iphoneos/*" \
+            -print -quit)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: No .app found."
+            exit 1
+          fi
+
+          cp -R "$APP_PATH" Payload/
+
+          zip -r FloatingColor.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloatingColor-IPA
+          path: FloatingColor.ipa
