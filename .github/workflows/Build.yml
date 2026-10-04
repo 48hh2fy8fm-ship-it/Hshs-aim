@@ -1,0 +1,52 @@
+name: Build Unsigned IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Unzip Project File
+        run: |
+          ZIP_FILE=$(find . -maxdepth 2 -name "*.zip" | head -n 1)
+          if [ -n "$ZIP_FILE" ]; then
+            echo "Unzipping $ZIP_FILE..."
+            unzip -o "$ZIP_FILE"
+          fi
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Build App
+        run: |
+          PROJ_PATH=$(find . -name "*.xcodeproj" | head -n 1)
+          SCHEME_NAME=$(xcodebuild -list -project "$PROJ_PATH" | grep -A 1 "Schemes:" | tail -n 1 | xargs)
+          echo "Found Project: $PROJ_PATH"
+          echo "Found Scheme: $SCHEME_NAME"
+          
+          xcodebuild build \
+            -project "$PROJ_PATH" \
+            -scheme "$SCHEME_NAME" \
+            -sdk iphoneos \
+            -configuration Release \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS=""
+
+      - name: Package to IPA
+        run: |
+          mkdir -p Payload
+          APP_PATH=$(find . -name "*.app" -path "*/Release-iphoneos/*" | head -n 1)
+          cp -R "$APP_PATH" Payload/
+          zip -r FloatingColor.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FloatingColor-IPA
+          path: FloatingColor.ipa
